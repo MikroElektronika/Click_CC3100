@@ -20,7 +20,7 @@
 * MCU:             STM32F107VC
 * Dev.Board:       EasyMx Pro v7
 * Oscillator:      72 Mhz internal
-* Ext. Modules:    3G click
+* Ext. Modules:    CC3100 click
 * SW:              MikroC PRO for ARM 4.7.4
 
 ```

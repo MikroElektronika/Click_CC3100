@@ -1,0 +1,4 @@
+STM32
+SL_FULL
+data=_data
+CPU_FREQ_IN_MHZ=Clock_MHz()

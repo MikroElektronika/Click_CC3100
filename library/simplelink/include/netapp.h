@@ -237,7 +237,7 @@ typedef struct _slHttpServerPostData_t
 
 typedef union
 {
-    slHttpServerString_t  httpTokenName; /* SL_NETAPP_HTTPGETTOKENVALUE */
+    slHttpServerString_t     httpTokenName; /* SL_NETAPP_HTTPGETTOKENVALUE */
     slHttpServerPostData_t   httpPostData;  /* SL_NETAPP_HTTPPOSTTOKENVALUE */
 } SlHttpServerEventData_u;
 
@@ -888,4 +888,3 @@ _i32 sl_NetAppGet( const _u8 AppId, const  _u8 Option, _u8 *pOptionLen,
 #endif /*  __cplusplus */
 
 #endif    /*  __NETAPP_H__ */
-

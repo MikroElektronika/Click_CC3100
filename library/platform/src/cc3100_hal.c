@@ -57,8 +57,8 @@ static void ( *spi_write_p )( unsigned int data_out );
 static unsigned int ( *uart_data_ready_p )( void );
 static unsigned int ( *uart_read_p )( void );
 static void ( *uart_write_p )( unsigned int _data );
-
 #endif
+
 #elif defined( __MIKROC_PRO_FOR_AVR__ )
 static unsigned char ( *spi_read_p )( unsigned char data_in );
 static void ( *spi_write_p )( unsigned char data_out );
@@ -87,24 +87,12 @@ static char ( *uart_data_ready_p )( void );
 static unsigned int ( *uart_read_p )( void );
 static void ( *uart_write_p )( unsigned int _data );
 
-#elif defined( __MIKROC_PRO_FOR_8051__ )
-
-
 #elif defined( __MIKROC_PRO_FOR_FT90x__ )
 static unsigned char( *spi_read_p )( unsigned char dummy );
 static void( *spi_write_p )( unsigned char dataOut );
 static unsigned char ( *uart_data_ready_p )( void );
 static unsigned char ( *uart_read_p )( void );
 static void ( *uart_write_p )( unsigned char _data );
-
-#elif defined ( __GNUC__ )
-
-#define spi_write_p 1
-#define spi_read_p 1
-#define uart_data_ready_p 1
-#define uart_read_p 1
-#define uart_write_p 1
-
 #endif
 
 #if defined( __MIKROC_PRO_FOR_ARM__ )   || \
@@ -114,7 +102,7 @@ static void ( *uart_write_p )( unsigned char _data );
     defined( __MIKROC_PRO_FOR_DSPIC__ ) || \
     defined( __MIKROC_PRO_FOR_8051__ )  || \
     defined( __MIKROC_PRO_FOR_FT90x__ )
-    #define MIKROC
+#define MIKROC
 extern sfr sbit CC3100_HIB_PIN;
 extern sfr sbit CC3100_CS_PIN;
 extern sfr sbit CC3100_RST_PIN;
@@ -144,82 +132,59 @@ static void delay_us( uint16_t ns )
 
 static void cs_low()
 {
-#if defined( __GNUC__ )
-    printf( "CS Low\n" );
-#else
     CC3100_CS_PIN = 0;
-#endif
     delay_us(1);
-    //cc3100_hal_delay( 1 );
 }
 
 static void cs_high()
 {
     delay_us(1);
-    //cc3100_hal_delay( 1 );
-#if defined( __GNUC__ )
-    printf( "CS High\n" );
-#else
     CC3100_CS_PIN = 1;
-#endif
 }
 
 static void rst_high()
 {
-#if defined( __GNUC__ )
-    printf( "RST High\n" );
-#else
     CC3100_RST_PIN = 1;
-#endif
     cc3100_hal_delay( 25 );
 }
 
 static void rst_low()
 {
-#if defined( __GNUC__ )
-    printf( "RST Low\n" );
-#else
     CC3100_RST_PIN = 0;
-#endif
     cc3100_hal_delay( 3 );
 }
 
 static void hibernate_enable()
 {
-#if defined( __GNUC__ )
-    printf( "Hibernating\n" );
-#else
     CC3100_HIB_PIN = 0;
-#endif
     cc3100_hal_delay( 10 );
 }
 
 static void hibernate_disable()
 {
-#if defined( __GNUC__ )
-    printf( "Wake up\n" );
-#else
     CC3100_HIB_PIN = 1;
     cc3100_hal_delay( 50 );
-#endif
 }
 
-/****************************************************************************
- ******************* Public Implementations *********************************
- ***************************************************************************/
-Fd_t cc3100_hal_init( char *interface_name, unsigned long flags )
+/******************************************************************************
+ *                                                         Public Implementations                                                           *
+ ******************************************************************************/
+
+Fd_t cc3100_hal_init
+(
+                char *interface_name,
+                unsigned long flags
+)
 {
-#if defined( __GNUC__ )
-    printf( "Interface name: %s, Flags %d\n", interface_name, flags );
-#endif
     if( interface_name != 0 )
     {
-        if( strcmp( interface_name, "CC3100_UART" ) == 0 )
+        if( !strcmp( interface_name, "CC3100_UART" ) )
         {
 #if defined( MIKROC )
-            uart_data_ready_p = UART_Data_Ready;
-            uart_read_p  = UART_Read;
-            uart_write_p = UART_Write;
+
+            uart_data_ready_p            = UART_Data_Ready;
+            uart_read_p                  = UART_Read;
+            uart_write_p                 = UART_Write;
 #endif
             hibernate_disable();
             cc3100_hal_reset();
@@ -275,7 +240,10 @@ Fd_t cc3100_hal_init( char *interface_name, unsigned long flags )
     return CC3100_ERROR;
 }
 
-int cc3100_hal_uninit( Fd_t fd )
+int cc3100_hal_uninit
+(
+                Fd_t fd
+)
 {
     switch( fd )
     {
@@ -290,14 +258,22 @@ int cc3100_hal_uninit( Fd_t fd )
     }
 }
 
-void cc3100_hal_reset()
+void cc3100_hal_reset
+(
+                void
+)
 {
    rst_low();
    rst_high();
 }
 
 
-int cc3100_hal_read( Fd_t fd, uint8_t *p_buffer, int len )
+int cc3100_hal_read
+(
+                Fd_t fd,
+                uint8_t *p_buffer,
+                int len
+)
 {    
     uint8_t *ptr = p_buffer;
     int ret_len = len;
@@ -306,13 +282,9 @@ int cc3100_hal_read( Fd_t fd, uint8_t *p_buffer, int len )
     {
     case SPI_MODE:
         cs_low();
-#if defined( __GNUC__ )
-        printf( "File Des: %d\nBuffer address: %p\nLength: %d\n" );
-#else
         while( len-- )
-            *( ptr++ ) = spi_read_p( 0x03 );
+            *ptr++ = spi_read_p( 0x03 );
         cs_high();
-#endif
         return ret_len;
         break;
     case UART_MODE:
@@ -323,21 +295,22 @@ int cc3100_hal_read( Fd_t fd, uint8_t *p_buffer, int len )
     }
 }
 
-int cc3100_hal_write( Fd_t fd, uint8_t *p_buffer, int len)
+int cc3100_hal_write
+(
+                Fd_t fd,
+                uint8_t *p_buffer,
+                int len
+)
 {
     int ret_len = len;
     
     switch( fd )
     {
     case SPI_MODE:
-#if defined( __GNUC__ )
-        printf( "File Des: %d\nWriting: %d\nLength: %d\n" );
-#else
         cs_low();
         while( len-- )
-            spi_write_p( *( p_buffer++ ) );
+            spi_write_p( *p_buffer++ );
         cs_high();
-#endif
         return ret_len;
         break;
     case UART_MODE:
@@ -348,21 +321,30 @@ int cc3100_hal_write( Fd_t fd, uint8_t *p_buffer, int len)
     }
 }
 
-
-int cc3100_hal_register_int_handler( P_EVENT_HANDLER isr_handler, void* p_value )
+int cc3100_hal_register_int_handler
+(
+                P_EVENT_HANDLER isr_handler,
+                void* p_value
+)
 {
     isr_event = isr_handler;
     cc3100_interrupt_enable();
 
-    return ( isr_event == 0 ) ? -1 : CC3100_OK;
+    return ( isr_event == 0 ) ? CC3100_ERROR : CC3100_OK;
 }
 
-void cc3100_hal_disable()
+void cc3100_hal_disable
+(
+                void
+)
 {
     hibernate_enable();
 }
 
-void cc3100_hal_enable()
+void cc3100_hal_enable
+(
+                void
+)
 {
     hibernate_enable();
     cc3100_hal_delay( 10 ); // Minimum time to wake from hibernation
@@ -370,17 +352,11 @@ void cc3100_hal_enable()
     cc3100_hal_delay( 50 ); // Hardware wakeup time plus firmware init time
 }
 
-void cc3100_hal_delay(unsigned long interval)
+void cc3100_hal_delay
+(
+                unsigned long interval
+)
 {
-    #if defined( __GNUC__ )
-    printf( "Delay for %d ms\n", interval );
-    #endif
     while( interval-- )
-    {
-        #if defined( __GNUC__ )
-
-        #else
             Delay_1ms();
-        #endif
-    }
 }

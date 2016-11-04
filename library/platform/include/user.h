@@ -1020,7 +1020,7 @@ typedef void ( *SL_P_EVENT_HANDLER )( void * );
     \brief          A callback for HTTP server events.
                     Possible events are:
                     SL_NETAPP_HTTPGETTOKENVALUE - NWP requests to get the value of a specific token
-                                        SL_NETAPP_HTTPPOSTTOKENVALUE - NWP post to the host a new value for a specific token
+                    SL_NETAPP_HTTPPOSTTOKENVALUE - NWP post to the host a new value for a specific token
 
         \param                        pServerEvent - Contains the relevant event information (SL_NETAPP_HTTPGETTOKENVALUE or SL_NETAPP_HTTPPOSTTOKENVALUE)
 

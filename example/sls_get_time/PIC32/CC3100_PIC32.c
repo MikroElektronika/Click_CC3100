@@ -8,7 +8,8 @@
 /*************** MODULE REVISION LOG ******************************************
 *
 *    Date    Software Version    Initials   Description
-*  09/02/16           .1         RBL        Module Created.
+*  09/02/16          .1             RBL     Module Created.
+*  15/03/16          .2             RBL     Interrupt control moved to user space
 *
 *******************************************************************************/
 /**
@@ -54,16 +55,16 @@
 #define STATUS_BIT_SMARTCONFIG_DONE     6
 #define STATUS_BIT_SMARTCONFIG_STOPPED  7
 
-#define SSID_NAME       "MikroE Public"         /* Access point name to connect to. */
-#define SEC_TYPE        SL_SEC_TYPE_WPA_WPA2   /* Security type of the Access piont */
-#define PASSKEY         "mikroe.guest"                  /* Password in case of secure AP */
-#define PASSKEY_LEN     strlen(PASSKEY)  /* Password length in case of secure AP */
+#define SSID_NAME       "MikroE Public"       /* Access point name to connect to. */
+#define SEC_TYPE        SL_SEC_TYPE_WPA_WPA2  /* Security type of the Access piont */
+#define PASSKEY         "mikroe.guest"        /* Password in case of secure AP */
+#define PASSKEY_LEN     strlen(PASSKEY)       /* Password length in case of secure AP */
 
 /* Configuration of the device when it comes up in AP mode */
-#define SSID_AP_MODE       "MIKROE"       /* SSID of the CC3100 in AP mode */
-#define PASSWORD_AP_MODE   "gotovo"                  /* Password of CC3100 AP */
-#define SEC_TYPE_AP_MODE   SL_SEC_TYPE_OPEN    /* Can take SL_SEC_TYPE_WEP or
-                                                * SL_SEC_TYPE_WPA as well */
+#define SSID_AP_MODE       "MIKROE"           /* SSID of the CC3100 in AP mode */
+#define PASSWORD_AP_MODE   "gotovo"           /* Password of CC3100 AP */
+#define SEC_TYPE_AP_MODE   SL_SEC_TYPE_OPEN   /* Can take SL_SEC_TYPE_WEP or
+                                                 SL_SEC_TYPE_WPA as well */
 
 /******************************************************************************
 * Module Preprocessor Macros
@@ -79,15 +80,11 @@
           }                           \
         }
 
-#define LOOP_FOREVER()      \
-            {               \
-                while(1);   \
-            }
+#define LOOP_FOREVER() { while(1); }
 
 #define SET_STATUS_BIT(status_variable, bit)    status_variable |= ((unsigned long)1<<(bit))
 #define CLR_STATUS_BIT(status_variable, bit)    status_variable &= ~((unsigned long)1<<(bit))
 #define GET_STATUS_BIT(status_variable, bit)    (0 != (status_variable & ((unsigned long)1<<(bit))))
-
 #define IS_CONNECTED(status_variable)             GET_STATUS_BIT(status_variable, \
                                                                STATUS_BIT_CONNECTION)
 #define IS_STA_CONNECTED(status_variable)         GET_STATUS_BIT(status_variable, \
@@ -126,11 +123,12 @@ typedef enum
 * Module Variable Definitions
 *******************************************************************************/
 // Pin and interrupt definitions
-//sbit CC3100_HIB_PIN at GPIOA_ODR.B0;
-//sbit CC3100_CS_PIN at GPIOD_ODR.B13;
-//sbit CC3100_RST_PIN at GPIOC_ODR.B2;
-//unsigned long CC3100_INT = IVT_INT_EXTI15_10;
-P_EVENT_HANDLER isr_event;
+sbit CC3100_HIB_PIN at LATD1_bit;//Hibernate Pin
+sbit CC3100_CS_PIN at LATC4_bit;//Chip Select Pin
+sbit CC3100_RST_PIN at LATC3_bit;//Reset Pin
+
+P_EVENT_HANDLER isr_event;          //Function pointer to handler for interrupt
+// Status
 _u32  g_Status = 0;
 
 struct
@@ -148,65 +146,60 @@ struct
     _u8 time[30];
     _u8 *ccPtr;
 
-} appData;
+} app_data_t;
 
-const _u8 SNTPserver[30] = "pool.ntp.org"; /* Add any one of the above servers */
+const _u8 sntp_server[30] = "pool.ntp.org"; /* NTP Time server */
 
-/* Tuesday is the 1st day in 2013 - the relative year */
-const _u8 daysOfWeek2013[7][4] = { {"Tue"},
-                                   {"Wed"},
-                                   {"Thu"},
-                                   {"Fri"},
-                                   {"Sat"},
-                                   {"Sun"},
-                                   {"Mon"} };
+const _u8 days_week[7][4] = { {"Tue"},
+                              {"Wed"},
+                              {"Thu"},
+                              {"Fri"},
+                              {"Sat"},
+                              {"Sun"},
+                              {"Mon"} };
 
-const _u8 monthOfYear[12][4] = { {"Jan"},
-                                 {"Feb"},
-                                 {"Mar"},
-                                 {"Apr"},
-                                 {"May"},
-                                 {"Jun"},
-                                 {"Jul"},
-                                 {"Aug"},
-                                 {"Sep"},
-                                 {"Oct"},
-                                 {"Nov"},
-                                 {"Dec"} };
+const _u8 month_of_year[12][4] = { {"Jan"},
+                                   {"Feb"},
+                                   {"Mar"},
+                                   {"Apr"},
+                                   {"May"},
+                                   {"Jun"},
+                                   {"Jul"},
+                                   {"Aug"},
+                                   {"Sep"},
+                                   {"Oct"},
+                                   {"Nov"},
+                                   {"Dec"} };
 
-const _u8 numOfDaysPerMonth[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+const _u8 num_of_days_month[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
 
 const _u8 digits[] = "0123456789";
 
 /******************************************************************************
 * Function Prototypes
 *******************************************************************************/
-static _i32 establishConnectionWithAP();
-static _i32 disconnectFromAP();
-static _i32 configureSimpleLinkToDefaultState();
+static _i32 establish_connection();
+static _i32 disconnect();
+static _i32 configure_to_defaults();
 
-static _i32 initializeAppVariables();
-static void displayBanner();
+static _i32 initialize_variables();
+static void display_banner();
 
-static _i32 getHostIP();
-static _i32 createConnection();
-static _i32 getSNTPTime(_i16 gmt_hr, _i16 gmt_min);
+static _i32 get_host_IP();
+static _i32 create_connection();
+static _i32 get_sntp_time(_i16 gmt_hr, _i16 gmt_min);
 static _u16 itoa(_i16 cNum, _u8 *cString);
 
 /******************************************************************************
 * Function Definitions
 *******************************************************************************/
-/*!
-    \brief Convert integer to ASCII in decimal base
-
-    \param[in]      cNum - integer number to convert
-
-    \param[OUT]     cString - output string
-
-    \return         number of ASCII characters
-
-    \warning
-*/
+/**
+ * @brief Convert integer to ASCII in decimal base
+ *
+ * @param[in]      cNum - integer number to convert
+ * @param[OUT]     cString - output string
+ * @return         number of ASCII characters
+ */
 static _u16 itoa(_i16 cNum, _u8 *cString)
 {
     _u16 length = 0;
@@ -243,23 +236,17 @@ static _u16 itoa(_i16 cNum, _u8 *cString)
     return length;
 }
 
-/*!
-    \brief Get the required data from the server.
-
-    \param[in]      gmt_hr - GMT offset hours
-
-    \param[in]      gmt_min - GMT offset minutes
-
-    \return         0 on success, -ve otherwise
-
-    \warning
-*/
-static _i32 getSNTPTime(_i16 gmt_hr, _i16 gmt_min)
+/**
+ * @brief Get the required data from the server.
+ *
+ * @param[in]      gmt_hr - GMT offset hours
+ * @param[in]      gmt_min - GMT offset minutes
+ * @return         0 on success, -ve otherwise
+ */
+static _i32 get_sntp_time(_i16 gmt_hr, _i16 gmt_min)
 {
     /*
                                 NTP Packet Header:
-
-
            0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9  0  1
           +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
           |LI | VN  |Mode |    Stratum    |     Poll      |   Precision    |
@@ -289,64 +276,62 @@ static _i32 getSNTPTime(_i16 gmt_hr, _i16 gmt_min)
           |                 Key Identifier (optional) (32)                 |
           +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
           |                                                                |
-          |                                                                |
           |                 Message Digest (optional) (128)                |
-          |                                                                |
           |                                                                |
           +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     */
 
-    SlSockAddrIn_t  LocalAddr;
-    SlSockAddr_t Addr;
+    SlSockAddrIn_t  local_addr;
+    SlSockAddr_t    address;
 
-    _u8    dataBuf[MAX_BUF_SIZE];
-    _i32     retVal = -1;
-    _i16     AddrSize = 0;
+    _u8  data_buffer[MAX_BUF_SIZE];
+    _i32 ret_value = -1;
+    _i16 addr_size = 0;
 
     /* For time zone with negative GMT value, change minutes to negative for
      * computation */
     if(gmt_hr < 0 && gmt_min > 0)
         gmt_min = gmt_min * (-1);
 
-    sl_Memset(dataBuf, 0, sizeof(dataBuf));
-    dataBuf[0] = '\x1b';
+    sl_Memset(data_buffer, 0, sizeof(data_buffer));
+    data_buffer[0] = '\x1b';
 
-    Addr.sa_family = AF_INET;
+    address.sa_family = AF_INET;
     /* the source port */
-    Addr.sa_data[0] = 0x00;
-    Addr.sa_data[1] = 0x7B;    /* 123 */
-    Addr.sa_data[2] = (_u8)((appData.DestinationIP >> 24) & 0xff);
-    Addr.sa_data[3] = (_u8)((appData.DestinationIP >> 16) & 0xff);
-    Addr.sa_data[4] = (_u8)((appData.DestinationIP >> 8) & 0xff);
-    Addr.sa_data[5] = (_u8) (appData.DestinationIP & 0xff);
+    address.sa_data[0] = 0x00;
+    address.sa_data[1] = 0x7B;    /* 123 */
+    address.sa_data[2] = (_u8)((app_data_t.DestinationIP >> 24) & 0xff);
+    address.sa_data[3] = (_u8)((app_data_t.DestinationIP >> 16) & 0xff);
+    address.sa_data[4] = (_u8)((app_data_t.DestinationIP >> 8) & 0xff);
+    address.sa_data[5] = (_u8) (app_data_t.DestinationIP & 0xff);
 
-    retVal = sl_SendTo(appData.SockID, dataBuf, sizeof(dataBuf), 0,
-                     &Addr, sizeof(Addr));
-    if (retVal != sizeof(dataBuf))
+    ret_value = sl_SendTo(app_data_t.SockID, data_buffer, sizeof(data_buffer), 0,
+                     &address, sizeof(address));
+    if (ret_value != sizeof(data_buffer))
     {
         /* could not send SNTP request */
         CLI_WRITE((_u8 *)" Device couldn't send SNTP request\n\r\n\r");
         ASSERT_ON_ERROR(SNTP_SEND_ERROR);
     }
 
-    AddrSize = sizeof(SlSockAddrIn_t);
-    LocalAddr.sin_family = SL_AF_INET;
-    LocalAddr.sin_port = 0;
-    LocalAddr.sin_addr.s_addr = 0;
+    addr_size = sizeof(SlSockAddrIn_t);
+    local_addr.sin_family = SL_AF_INET;
+    local_addr.sin_port = 0;
+    local_addr.sin_addr.s_addr = 0;
 
-    retVal = sl_Bind(appData.SockID,(SlSockAddr_t *)&LocalAddr, AddrSize);
-    if(retVal < 0)
-        ASSERT_ON_ERROR(retVal);
+    ret_value = sl_Bind(app_data_t.SockID,(SlSockAddr_t *)&local_addr, addr_size);
+    if(ret_value < 0)
+        ASSERT_ON_ERROR(ret_value);
 
-    retVal = sl_RecvFrom(appData.SockID, dataBuf, sizeof(dataBuf), 0,
-                       (SlSockAddr_t *)&LocalAddr,  (SlSocklen_t*)&AddrSize);
-    if (retVal <= 0)
+    ret_value = sl_RecvFrom(app_data_t.SockID, data_buffer, sizeof(data_buffer), 0,
+                       (SlSockAddr_t *)&local_addr,  (SlSocklen_t*)&addr_size);
+    if (ret_value <= 0)
     {
         CLI_WRITE((_u8 *)" Device couldn't receive time information \n\r");
         ASSERT_ON_ERROR(SNTP_RECV_ERROR);
     }
 
-    if ((dataBuf[0] & 0x7) != 4)    /* expect only server response */
+    if ((data_buffer[0] & 0x7) != 4)    /* expect only server response */
     {
         /* MODE is not server, abort */
         CLI_WRITE((_u8 *)" Device is expecting response from server only!\n\r");
@@ -356,148 +341,140 @@ static _i32 getSNTPTime(_i16 gmt_hr, _i16 gmt_min)
     {
         _u8 index;
 
-        appData.elapsedSec = dataBuf[40];
-        appData.elapsedSec <<= 8;
-        appData.elapsedSec += dataBuf[41];
-        appData.elapsedSec <<= 8;
-        appData.elapsedSec += dataBuf[42];
-        appData.elapsedSec <<= 8;
-        appData.elapsedSec += dataBuf[43];
+        app_data_t.elapsedSec = data_buffer[40];
+        app_data_t.elapsedSec <<= 8;
+        app_data_t.elapsedSec += data_buffer[41];
+        app_data_t.elapsedSec <<= 8;
+        app_data_t.elapsedSec += data_buffer[42];
+        app_data_t.elapsedSec <<= 8;
+        app_data_t.elapsedSec += data_buffer[43];
 
-        appData.elapsedSec -= TIME2013;
+        app_data_t.elapsedSec -= TIME2013;
 
         /* correct the time zone */
-        appData.elapsedSec += (gmt_hr * SEC_IN_HOUR);
-        appData.elapsedSec += (gmt_min * SEC_IN_MIN);
+        app_data_t.elapsedSec += (gmt_hr * SEC_IN_HOUR);
+        app_data_t.elapsedSec += (gmt_min * SEC_IN_MIN);
 
-        appData.ccPtr = &appData.time[0];
+        app_data_t.ccPtr = &app_data_t.time[0];
 
         /* day */
-        appData.sGeneralVar = appData.elapsedSec/SEC_IN_DAY;
-        pal_Memcpy(appData.ccPtr, daysOfWeek2013[appData.sGeneralVar%7], 3);
-        appData.ccPtr += 3;
-        *appData.ccPtr++ = '\x20';
+        app_data_t.sGeneralVar = app_data_t.elapsedSec/SEC_IN_DAY;
+        pal_Memcpy(app_data_t.ccPtr, days_week[app_data_t.sGeneralVar%7], 3);
+        app_data_t.ccPtr += 3;
+        *app_data_t.ccPtr++ = '\x20';
 
         /* month */
-        appData.sGeneralVar %= 365;
+        app_data_t.sGeneralVar %= 365;
         for (index = 0; index < 12; index++)
         {
-            appData.sGeneralVar -= numOfDaysPerMonth[index];
-            if (appData.sGeneralVar < 0)
+            app_data_t.sGeneralVar -= num_of_days_month[index];
+            if (app_data_t.sGeneralVar < 0)
                 break;
         }
 
-        pal_Memcpy( appData.ccPtr, monthOfYear[index], 3 );
-        appData.ccPtr += 3;
-        *appData.ccPtr++ = '\x20';
+        pal_Memcpy( app_data_t.ccPtr, month_of_year[index], 3 );
+        app_data_t.ccPtr += 3;
+        *app_data_t.ccPtr++ = '\x20';
 
         /* date */
         /* restore the day in current month*/
-        appData.sGeneralVar += numOfDaysPerMonth[index];
-        appData.ccLen = itoa(appData.sGeneralVar + 1, appData.ccPtr);
-        appData.ccPtr += appData.ccLen;
-        *appData.ccPtr++ = '\x20';
+        app_data_t.sGeneralVar += num_of_days_month[index];
+        app_data_t.ccLen = itoa(app_data_t.sGeneralVar + 1, app_data_t.ccPtr);
+        app_data_t.ccPtr += app_data_t.ccLen;
+        *app_data_t.ccPtr++ = '\x20';
 
         /* year */
         /* number of days since beginning of 2013 */
-        appData.uGeneralVar = appData.elapsedSec/SEC_IN_DAY;
-        appData.uGeneralVar /= 365;
-        appData.ccLen = itoa(YEAR2013 + appData.uGeneralVar , appData.ccPtr);
-        appData.ccPtr += appData.ccLen;
-        *appData.ccPtr++ = '\x20';
+        app_data_t.uGeneralVar = app_data_t.elapsedSec/SEC_IN_DAY;
+        app_data_t.uGeneralVar /= 365;
+        app_data_t.ccLen = itoa(YEAR2013 + app_data_t.uGeneralVar , app_data_t.ccPtr);
+        app_data_t.ccPtr += app_data_t.ccLen;
+        *app_data_t.ccPtr++ = '\x20';
 
         /* time */
-        appData.uGeneralVar = appData.elapsedSec%SEC_IN_DAY;
+        app_data_t.uGeneralVar = app_data_t.elapsedSec%SEC_IN_DAY;
         /* number of seconds per hour */
-        appData.uGeneralVar1 = appData.uGeneralVar%SEC_IN_HOUR;
-        appData.uGeneralVar /= SEC_IN_HOUR;               /* number of hours */
-        appData.ccLen = itoa(appData.uGeneralVar, appData.ccPtr);
-        appData.ccPtr += appData.ccLen;
-        *appData.ccPtr++ = ':';
+        app_data_t.uGeneralVar1 = app_data_t.uGeneralVar%SEC_IN_HOUR;
+        app_data_t.uGeneralVar /= SEC_IN_HOUR;               /* number of hours */
+        app_data_t.ccLen = itoa(app_data_t.uGeneralVar, app_data_t.ccPtr);
+        app_data_t.ccPtr += app_data_t.ccLen;
+        *app_data_t.ccPtr++ = ':';
         /* number of minutes per hour */
-        appData.uGeneralVar = appData.uGeneralVar1/SEC_IN_MIN;
+        app_data_t.uGeneralVar = app_data_t.uGeneralVar1/SEC_IN_MIN;
         /* number of seconds per minute */
-        appData.uGeneralVar1 %= SEC_IN_MIN;
-        appData.ccLen = itoa(appData.uGeneralVar, appData.ccPtr);
-        appData.ccPtr += appData.ccLen;
-        *appData.ccPtr++ = ':';
-        appData.ccLen = itoa(appData.uGeneralVar1, appData.ccPtr);
-        appData.ccPtr += appData.ccLen;
-        *appData.ccPtr++ = '\x20';
+        app_data_t.uGeneralVar1 %= SEC_IN_MIN;
+        app_data_t.ccLen = itoa(app_data_t.uGeneralVar, app_data_t.ccPtr);
+        app_data_t.ccPtr += app_data_t.ccLen;
+        *app_data_t.ccPtr++ = ':';
+        app_data_t.ccLen = itoa(app_data_t.uGeneralVar1, app_data_t.ccPtr);
+        app_data_t.ccPtr += app_data_t.ccLen;
+        *app_data_t.ccPtr++ = '\x20';
 
-        *appData.ccPtr++ = '\0';
+        *app_data_t.ccPtr++ = '\0';
 
         CLI_WRITE((_u8 *)"\r\n Server ");
-        CLI_WRITE((_u8 *)SNTPserver);
+        CLI_WRITE((_u8 *)sntp_server);
         CLI_WRITE((_u8 *)" has responded with time information");
         CLI_WRITE((_u8 *)"\n\r\r\n ");
-        CLI_WRITE((_u8 *)appData.time);
+        CLI_WRITE((_u8 *)app_data_t.time);
         CLI_WRITE((_u8 *)"\n\r\r\n");
     }
 
     return SUCCESS;
 }
 
-/*!
-    \brief Create UDP socket to communicate with server.
-
-    \param[in]      none
-
-    \return         Socket descriptor for success otherwise negative
-
-    \warning
-*/
-static _i32 createConnection()
+/**
+ * @brief Create UDP socket to communicate with server.
+ *
+ * @param[in]      none
+ * @return         Socket descriptor for success otherwise negative
+ */
+static _i32 create_connection()
 {
     _i32 sd = 0;
 
     sd = sl_Socket(SL_AF_INET, SL_SOCK_DGRAM, IPPROTO_UDP);
     if( sd < 0 )
-    {
         CLI_WRITE((_u8 *)"Error creating socket\n\r\n\r");
-    }
 
     return sd;
 }
 
-/*!
-    \brief Gets the Server IP address
-
-    \param[in]      none
-
-    \return         zero for success and -1 for error
-
-    \warning
-*/
-static _i32 getHostIP()
+/**
+ * @brief Gets the Server IP address
+ *
+ * @param[in]      none
+ * @return         zero for success and -1 for error
+ */
+static _i32 get_host_IP()
 {
     _i32 status = 0;
-    appData.DestinationIP = 0;
+    app_data_t.DestinationIP = 0;
 
-    status = sl_NetAppDnsGetHostByName( (_i8*)SNTPserver, strlen(SNTPserver),
-                                       &appData.DestinationIP, SL_AF_INET);
+    status = sl_NetAppDnsGetHostByName( (_i8*)sntp_server, strlen(sntp_server),
+                                       &app_data_t.DestinationIP, SL_AF_INET);
     ASSERT_ON_ERROR(status);
 
     return SUCCESS;
 }
 
-/*!
-    \brief This function configure the SimpleLink device in its default state. It:
-           - Sets the mode to STATION
-           - Configures connection policy to Auto and AutoSmartConfig
-           - Deletes all the stored profiles
-           - Enables DHCP
-           - Disables Scan policy
-           - Sets Tx power to maximum
-           - Sets power policy to normal
-           - Unregisters mDNS services
-           - Remove all filters
-
-    \param[in]      none
-
-    \return         On success, zero is returned. On error, negative is returned
-*/
-static _i32 configureSimpleLinkToDefaultState()
+/**
+ * @brief This function configure the SimpleLink device in its default state. It:
+ *            - Sets the mode to STATION
+ *            - Configures connection policy to Auto and AutoSmartConfig
+ *            - Deletes all the stored profiles
+ *            - Enables DHCP
+ *            - Disables Scan policy
+ *            - Sets Tx power to maximum
+ *            - Sets power policy to normal
+ *            - Unregisters mDNS services
+ *            - Remove all filters
+ *
+ * @param[in]      none
+ *
+ * @return         On success, zero is returned. On error, negative is returned
+ */
+static _i32 configure_to_defaults()
 {
     SlVersionFull   ver = {0};
     _WlanRxFilterOperationCommandBuff_t  RxFilterIdMask = {0};
@@ -516,11 +493,11 @@ static _i32 configureSimpleLinkToDefaultState()
     /* If the device is not in station-mode, try configuring it in station-mode */
     if (ROLE_STA != mode)
     {
+        /* If the device is in AP mode, we need to wait for this event before
+           doing anything */
         if (ROLE_AP == mode)
-        {
-            /* If the device is in AP mode, we need to wait for this event before doing anything */
-            while(!IS_IP_ACQUIRED(g_Status)) { _SlNonOsMainLoopTask(); }
-        }
+            while(!IS_IP_ACQUIRED(g_Status))
+                _SlNonOsMainLoopTask();
 
         /* Switch to STA role and restart */
         retVal = sl_WlanSetMode(ROLE_STA);
@@ -534,10 +511,8 @@ static _i32 configureSimpleLinkToDefaultState()
 
         /* Check if the device is in station again */
         if (ROLE_STA != retVal)
-        {
             /* We don't want to proceed if the device is not coming up in station-mode */
             ASSERT_ON_ERROR(DEVICE_NOT_IN_STATION_MODE);
-        }
     }
 
     /* Get the device's version-information */
@@ -561,10 +536,8 @@ static _i32 configureSimpleLinkToDefaultState()
      */
     retVal = sl_WlanDisconnect();
     if(0 == retVal)
-    {
         /* Wait */
         while(IS_CONNECTED(g_Status)) { _SlNonOsMainLoopTask(); }
-    }
 
     /* Enable DHCP client*/
     retVal = sl_NetCfgSet(SL_IPV4_STA_P2P_CL_DHCP_ENABLE,1,1,&val);
@@ -598,28 +571,25 @@ static _i32 configureSimpleLinkToDefaultState()
     retVal = sl_Stop(SL_STOP_TIMEOUT);
     ASSERT_ON_ERROR(retVal);
 
-    retVal = initializeAppVariables();
+    retVal = initialize_variables();
     ASSERT_ON_ERROR(retVal);
 
     return retVal; /* Success */
 }
 
-/*!
-    \brief Connecting to a WLAN Access point
-
-    This function connects to the required AP (SSID_NAME).
-    The function will return once we are connected and have acquired IP address
-
-    \param[in]  None
-
-    \return     0 on success, negative error-code on error
-
-    \note
-
-    \warning    If the WLAN connection fails or we don't acquire an IP address,
-                We will be stuck in this function forever.
+/**
+ * @brief Connecting to a WLAN Access point
+ *
+ * This function connects to the required AP (SSID_NAME).
+ * The function will return once we are connected and have acquired IP address
+ *
+ * @param[in]  None
+ *
+ * @return     0 on success, negative error-code on error
+ * @warning    If the WLAN connection fails or we don't acquire an IP address,
+ *             We will be stuck in this function forever.
 */
-static _i32 establishConnectionWithAP()
+static _i32 establish_connection()
 {
     SlSecParams_t secParams = {0};
     _i32 retVal = 0;
@@ -634,70 +604,56 @@ static _i32 establishConnectionWithAP()
 
     /* Wait */
     while( ( !IS_CONNECTED( g_Status ) ) || ( !IS_IP_ACQUIRED( g_Status ) ) )
-    {
         _SlNonOsMainLoopTask();
-    }
 
     return SUCCESS;
 }
 
-/*!
-    \brief Disconnecting from a WLAN Access point
-
-    This function disconnects from the connected AP
-
-    \param[in]      None
-
-    \return         none
-
-    \note
-
-    \warning        If the WLAN disconnection fails, we will be stuck in this function forever.
-*/
-static _i32 disconnectFromAP()
+/**
+ * @brief Disconnecting from a WLAN Access point
+ *
+ * This function disconnects from the connected AP
+ *
+ * @param[in]      None
+ * @return         none
+ * @warning        If the WLAN disconnection fails, we will be stuck in this function forever.
+ */
+static _i32 disconnect()
 {
     _i32 retVal = -1;
 
     /*
-     * The function returns 0 if 'Disconnected done', negative number if already disconnected
-     * Wait for 'disconnection' event if 0 is returned, Ignore other return-codes
+     * The function returns 0 if 'Disconnected done', negative number if
+     * already disconnected, wait for 'disconnection' event if 0 is returned,
+     * ignore other return-codes.
      */
     retVal = sl_WlanDisconnect();
+
     if(0 == retVal)
-    {
-        /* Wait */
         while(IS_CONNECTED(g_Status))
-        {
             _SlNonOsMainLoopTask();
-        }
-    }
 
     return SUCCESS;
 }
 
-/*!
-    \brief This function initializes the application variables
-
-    \param[in]  None
-
-    \return     0 on success, negative error-code on error
-*/
-static _i32 initializeAppVariables()
+/**
+ * @brief This function initializes the application variables
+ *
+ * @param[in]  None
+ * @return     0 on success, negative error-code on error
+ */
+static _i32 initialize_variables()
 {
     g_Status = 0;
-    pal_Memset(&appData, 0, sizeof(appData));
+    pal_Memset(&app_data_t, 0, sizeof(app_data_t));
 
     return SUCCESS;
 }
 
-/*!
-    \brief This function displays the application's banner
-
-    \param      None
-
-    \return     None
-*/
-static void displayBanner()
+/**
+ * @brief This function displays the application's banner
+ */
+static void display_banner()
 {
     CLI_WRITE((_u8 *)"\n\r\n\r");
     CLI_WRITE((_u8 *)" Get time application - Version ");
@@ -705,7 +661,10 @@ static void displayBanner()
     CLI_WRITE((_u8 *)"\n\r*******************************************************************************\n\r");
 }
 
-void wlan_event_handler( SlWlanEvent_t *p_wlan_event )
+/******************************************************************************
+ ******************** Required USER Defined Functions *************************
+ *****************************************************************************/
+void cc3100_wlan_event_handler( SlWlanEvent_t *p_wlan_event )
 {
     if(p_wlan_event == NULL)
     {
@@ -760,7 +719,7 @@ void wlan_event_handler( SlWlanEvent_t *p_wlan_event )
     }
 }
 
-void net_app_event_handler( SlNetAppEvent_t *p_net_app_event )
+void cc3100_net_app_event_handler( SlNetAppEvent_t *p_net_app_event )
 {
     if(p_net_app_event == NULL)
     {
@@ -795,7 +754,7 @@ void net_app_event_handler( SlNetAppEvent_t *p_net_app_event )
     }
 }
 
-void http_server_callback( SlHttpServerEvent_t *p_http_event,
+void cc3100_http_server_callback( SlHttpServerEvent_t *p_http_event,
                            SlHttpServerResponse_t *p_http_response )
 {
     /*
@@ -805,7 +764,7 @@ void http_server_callback( SlHttpServerEvent_t *p_http_event,
     CLI_WRITE((_u8 *)" [HTTP EVENT] Unexpected event \n\r");
 }
 
-void general_event_handler( SlDeviceEvent_t *p_device_event )
+void cc3100_general_event_handler( SlDeviceEvent_t *p_device_event )
 {
     /*
      * Most of the general errors are not FATAL are to be handled
@@ -814,7 +773,7 @@ void general_event_handler( SlDeviceEvent_t *p_device_event )
     CLI_WRITE((_u8 *)" [GENERAL EVENT] \n\r");
 }
 
-void socket_event_handler( SlSockEvent_t *p_socket )
+void cc3100_socket_event_handler( SlSockEvent_t *p_socket )
 {
     if(p_socket == NULL)
     {
@@ -826,7 +785,7 @@ void socket_event_handler( SlSockEvent_t *p_socket )
     {
         case SL_SOCKET_TX_FAILED_EVENT:
         {
-            /*
+           /*
             * TX Failed
             *
             * Information about the socket descriptor and status will be
@@ -839,7 +798,8 @@ void socket_event_handler( SlSockEvent_t *p_socket )
             switch( p_socket->socketAsyncEvent.SockTxFailData.status )
             {
                 case SL_ECLOSE:
-                    CLI_WRITE((_u8 *)" [SOCK EVENT] Close socket operation failed to transmit all queued packets\n\r");
+                    CLI_WRITE((_u8 *)" [SOCK EVENT] Close socket operation \
+                                       failed to transmit all queued packets\n\r");
                 break;
 
 
@@ -856,36 +816,59 @@ void socket_event_handler( SlSockEvent_t *p_socket )
     }
 }
 
+void cc3100_interrupt_enable(void)
+{
+    #if defined( STM32 )
+    NVIC_IntEnable( IVT_INT_EXTI15_10 ); // Enable External interrupt
+    #elif defined( TI )
+    NVIC_IntEnable( IVT_INT_GPIOB );
+    #endif
+    
+    //INT2IE_bit = 0;
+    
+}
+
+void cc3100_interrupt_disable()
+{
+    #if defined( STM32 )
+    NVIC_IntDisable( IVT_INT_EXTI15_10 ); // Disable External interrupt
+    #elif defined( TI )
+    NVIC_IntDisable( IVT_INT_GPIOB );
+    #endif
+    
+    //INT2IE_bit = 1;
+}
+
+/******************************************************************************
+ ******************** END Required USER Defined *******************************
+ *****************************************************************************/
+
 /*
  * System initialize
  */
 void system_init()
 {
-    /*DisableInterrupts();
-    GPIO_Digital_Output( &GPIOC_BASE, _GPIO_PINMASK_2 );
-    GPIO_Digital_Output( &GPIOA_BASE, _GPIO_PINMASK_0 );
-    GPIO_Digital_Output( &GPIOD_BASE, _GPIO_PINMASK_13 );
-    GPIO_Digital_Input( &GPIOD_BASE, _GPIO_PINMASK_10 );
+    DisableInterrupts();
+    TRISE9_bit = 1;
+    TRISD1_bit = 0;
+    TRISC4_bit = 0;
+    TRISC3_bit = 0;
 
-    SPI3_Init_Advanced( _SPI_FPCLK_DIV16,
-                        _SPI_MASTER | _SPI_8_BIT | _SPI_CLK_IDLE_LOW |
-                        _SPI_FIRST_CLK_EDGE_TRANSITION | _SPI_MSB_FIRST |
-                        _SPI_SS_DISABLE | _SPI_SSM_ENABLE | _SPI_SSI_1,
-                        &_GPIO_MODULE_SPI3_PC10_11_12 );
-
-    RCC_APB2ENR.AFIOEN = 1;          // Enable clock for alternate pin functions
-    AFIO_EXTICR3 = ( 1 << EXTI100 ) | ( 1 << EXTI101 ); // Mask interrupt
-    EXTI_RTSR |= ( 1 << TR10 );      // Set interrupt on Rising edge
-    EXTI_IMR |= ( 1 << MR10 );       // Set mask
+    SPI3_Init_Advanced( _SPI_MASTER, _SPI_8_BIT, 80, _SPI_SS_DISABLE,
+                        _SPI_DATA_SAMPLE_MIDDLE , _SPI_CLK_IDLE_LOW, _SPI_ACTIVE_2_IDLE );
+                        
+    AD1PCFG     = 0xFFFF;
+    INT2IP0_bit = 0;                   // Set INT2 interrupt
+    INT2IP1_bit = 0;                   // Set interrupt priorities
+    INT2IP2_bit = 1;                   // Set inrrupt priority to 4
+    INT2IE_bit  = 1;                   // Set interrupt on INT2 (RE9) to be enabled
 
     // UART
-    UART1_Init_Advanced( 115200,
-                         _UART_8_BIT_DATA,
-                         _UART_NOPARITY,
-                         _UART_ONE_STOPBIT,
-                         &_GPIO_MODULE_USART1_PA9_10 );
+    UART5_Init( 115200 );
     Delay_ms( 100 );
-    EnableInterrupts();*/
+    
+    UART_Write_Text( "System Initialized\r\n" );
+    EnableInterrupts();
 }
 
 void main(void)
@@ -894,10 +877,10 @@ void main(void)
 
     system_init();
 
-    retVal = initializeAppVariables();
+    retVal = initialize_variables();
     ASSERT_ON_ERROR(retVal);
 
-    displayBanner();
+    display_banner();
 
     /*
      * Following function configures the device to default state by cleaning
@@ -910,7 +893,7 @@ void main(void)
      * Note that all profiles and persistent settings that were done on the
      * device will be lost
      */
-    retVal = configureSimpleLinkToDefaultState();
+    retVal = configure_to_defaults();
 
     if(retVal < 0)
     {
@@ -939,7 +922,7 @@ void main(void)
     CLI_WRITE((_u8 *)" Device started as STATION \n\r");
 
     /* Connecting to WLAN AP */
-    retVal = establishConnectionWithAP();
+    retVal = establish_connection();
     if(retVal < 0)
     {
         CLI_WRITE((_u8 *)" Failed to establish connection w/ an AP \n\r");
@@ -948,7 +931,7 @@ void main(void)
 
     CLI_WRITE(" Connection established w/ AP and IP is acquired \n\r");
 
-    retVal = getHostIP();
+    retVal = get_host_IP();
 
     if(retVal < 0)
     {
@@ -956,21 +939,21 @@ void main(void)
         LOOP_FOREVER();
     }
 
-    appData.SockID = createConnection();
+    app_data_t.SockID = create_connection();
 
-    if(appData.SockID < 0)
+    if(app_data_t.SockID < 0)
         LOOP_FOREVER();
 
-    retVal = getSNTPTime(GMT_TIME_ZONE_HR,GMT_TIME_ZONE_MIN);
+    retVal = get_sntp_time(GMT_TIME_ZONE_HR,GMT_TIME_ZONE_MIN);
 
     if(retVal < 0)
         LOOP_FOREVER();
 
-    retVal = sl_Close(appData.SockID);
+    retVal = sl_Close(app_data_t.SockID);
     if(retVal < 0)
         LOOP_FOREVER();
 
-    retVal = disconnectFromAP();
+    retVal = disconnect();
     if(retVal < 0)
     {
         CLI_WRITE((_u8 *)" Failed to disconnect from the AP \n\r");
@@ -982,7 +965,13 @@ void main(void)
  * @brief register an interrupt handler for the host IRQ
  *
  */
-void irq_handler()
+void irq_handler() iv IVT_EXTERNAL_2 ilevel 4 ics ICS_AUTO
 {
-    ( *isr_event )( 0 );
+    if( INT2IF_bit )
+        ( *isr_event )( 0 );
+        
+    INT2IF_bit = 0;
 }
+
+
+

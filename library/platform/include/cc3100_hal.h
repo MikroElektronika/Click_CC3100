@@ -1,6 +1,6 @@
 /****************************************************************************
 * Title                 :   ADC Application
-* Filename              :   adc_app.h
+* Filename              :   cc3100_hal.h
 * Author                :   JWB
 * Origin Date           :   06/07/2012
 * Notes                 :   None
@@ -35,6 +35,7 @@
 /******************************************************************************
 * Includes
 *******************************************************************************/
+
 #include <stdint.h>
 #include "datatypes.h"
 #include "simplelink.h"
@@ -57,6 +58,7 @@
 /******************************************************************************
 * Typedefs
 *******************************************************************************/
+
 typedef void ( *P_EVENT_HANDLER )( void *p_pvalue );
 typedef unsigned int Fd_t;
 
@@ -68,20 +70,31 @@ typedef unsigned int Fd_t;
 /******************************************************************************
 * Function Prototypes
 *******************************************************************************/
-/**
- * @brief cc3100_hal_init
- * @param interface_name
- * @param flags
- * @return
- */
-Fd_t cc3100_hal_init( char *interface_name, unsigned long flags );
 
 /**
- * @brief cc3100_hal_uninit
- * @param fd
+ * @brief HAL initialization
+ *
+ * @param[in] interface_name
+ * @param[in] flags
  * @return
  */
-int cc3100_hal_uninit( Fd_t fd );
+Fd_t cc3100_hal_init
+(
+                char *interface_name,
+                unsigned long flags
+);
+
+/**
+ * @brief HAL uninitialization
+ *
+ * @param[in] fd
+ *
+ * @return
+ */
+int cc3100_hal_uninit
+(
+                Fd_t fd
+);
 
 /**
  * @brief cc3100_hal_read
@@ -90,7 +103,12 @@ int cc3100_hal_uninit( Fd_t fd );
  * @param len
  * @return
  */
-int cc3100_hal_read(Fd_t fd, uint8_t *p_buffer, int len );
+int cc3100_hal_read
+(
+                Fd_t fd,
+                uint8_t *p_buffer,
+                int len
+);
 
 /**
  * @brief cc3100_hal_write
@@ -98,45 +116,61 @@ int cc3100_hal_read(Fd_t fd, uint8_t *p_buffer, int len );
  * @param len
  * @return
  */
-int cc3100_hal_write(Fd_t fd, uint8_t *p_buffer, int len );
+int cc3100_hal_write
+(
+                Fd_t fd,
+                uint8_t *p_buffer,
+                int len
+);
 
 /**
- *  @brief register an interrupt handler for the host IRQ
- *
- *  @param[in] interrupt_handler - pointer to interrupt handler function
- *
- *  @param[in] p_value  - pointer to a memory strcuture that is
- *                        passed to the interrupt handler.
- *
- *  @return upon successful registration, the function shall return 0.
- *          Otherwise, -1 shall be returned
+ *  @brief Register an Interrupt Handler For The Host IRQ
  *
  *  @note If there is already registered interrupt handler, the
- *        function will overwrite the old handler with the new one
-*/
-int cc3100_hal_register_int_handler( P_EVENT_HANDLER isr_handler,
-                                           void* p_value );
+ *  function will overwrite the old handler with the new one
+ *
+ *  @param[in] isr_handler - pointer to interrupt handler function
+ *
+ *  @param[in] p_value  - pointer to a memory structure that is
+ *                        passed to the interrupt handler.
+ *
+ *  @retval 0 / -1
+ */
+int cc3100_hal_register_int_handler
+(
+     P_EVENT_HANDLER isr_handler,
+        void* p_value
+);
 
 /**
  * @brief Enables the CC3100
  *
  * @note Uses the hibernate pin
  */
-void cc3100_hal_enable( void );
+void cc3100_hal_enable
+(
+                void
+);
 
 /**
  * @brief Resets the module
  *
  * Used at startup sequence and when module is unresponsive.
  */
-void cc3100_hal_reset( void );
+void cc3100_hal_reset
+(
+                void
+);
 
 /**
  * @brief Disables the CC3100
  *
  * @note Uses the hibernate pin
  */
-void cc3100_hal_disable( void );
+void cc3100_hal_disable
+(
+                void
+);
 
 /**
  * @brief Enables the interrupt from the CC3100
@@ -144,7 +178,10 @@ void cc3100_hal_disable( void );
  * External function defined by user, enables the interrupt pin attached to the
  * units int pin.
  */
-void cc3100_interrupt_enable( void );
+void cc3100_interrupt_enable
+(
+                void
+);
 
 /**
  * @brief Disables the interrupt from the CC3100
@@ -152,14 +189,20 @@ void cc3100_interrupt_enable( void );
  * Extern function defined by user, disables the interrupt pin attached to the
  * units int pin.
  */
-void cc3100_interrupt_disable( void );
+void cc3100_interrupt_disable
+(
+                void
+);
 
 /**
  * @brief Delay in ms
  *
  * @param interval[in] - ms for delay
  */
-void cc3100_hal_delay(unsigned long interval);
+void cc3100_hal_delay
+(
+                unsigned long interval
+);
 
 #endif
 /*** End of File **************************************************************/

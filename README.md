@@ -1,6 +1,7 @@
 ![MikroE](http://www.mikroe.com/img/designs/beta/logo_small.png)
 
-![CC3100_click](http://cdn.mikroe.com/img/banners/news/2016/10/cc3100-click-banner-news.png)
+
+![CC_click](http://cdn.mikroe.com/img/banners/news/2016/10/cc3100-click-banner-news.png)
 
 ---
 [Product Page](http://www.mikroe.com/click/cc3100/)
